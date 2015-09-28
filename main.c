@@ -7,7 +7,7 @@
 #define TCOUNT 10
 #define COUNT_LIMIT 12
 
-int LIMIT_CONSUME = 100;
+int LIMIT_CONSUME = 1000;
 int     count = 0;
 typedef struct Element {
   int item;
