@@ -32,21 +32,32 @@ void *consumer(void *thread_data) {
   pthread_mutex_unlock(&count_mutex);
   int should_break = 0;
   while(i < LIMIT_CONSUME) {
-    usleep(100*6);
+    usleep(100*3);
     pthread_mutex_lock(&count_mutex);
     printf("consumer top, num: %d\n",(*(thread_data_t *)thread_data).number_consumed);
     element_t *queue = ((*(thread_data_t *)thread_data).queue);
+    if (queue != NULL) {
+      element_t *old_head = queue;
+      (*(thread_data_t *)thread_data).queue = old_head->next;
+      free(old_head);
+      (*(thread_data_t *)thread_data).number_consumed = ++i; 
+      usleep(1000); // TODO: needs to be real mathz.
+    } else {
+      // let's wait for the producer to inform us there is an item waiting for us.
+      //printf("about to wait for producer.\n");
+      pthread_cond_wait(&count_threshold_cv, &count_mutex);
+      //printf("producer gave go ahead.\n");
+    }
     //printf("consumer queue addy: %p\n", queue);
-    element_t *q_next = queue->next;
+    /*element_t *q_next = queue->next;
     if (q_next != NULL) {
       printf("consume the head...\n");
       queue->next = ((element_t *)(element_t *)(q_next)->next);
       free(q_next);
       (*(thread_data_t *)thread_data).number_consumed = ++i; 
-    }
-    if( (*(thread_data_t *)thread_data).number_consumed >= LIMIT_CONSUME) {
-      pthread_cond_signal(&count_threshold_cv);
-      printf("will break.\n");
+      }*/
+    if(i >= LIMIT_CONSUME) {
+      //printf("will break.\n");
       should_break = 1;
     }
     pthread_mutex_unlock(&count_mutex);
@@ -71,34 +82,49 @@ void *producer(void *thread_data) {
     //printf("producer queue addy: %p\n", queue);
     element_t *cur_element = queue;
     int num_elements = 0;
-    while (cur_element->next != NULL) {
-      cur_element = cur_element->next;
-      num_elements++;
+    if (cur_element != NULL) {
+      while (cur_element->next != NULL) {
+	cur_element = cur_element->next;
+	num_elements++;
+      }
     }
     // at the end of the queue, now
     element_t *new_end = (element_t *)malloc(sizeof(element_t));
-    cur_element->next = new_end;
+    if (cur_element != NULL) {
+      cur_element->next = new_end;
+    } else {
+      cur_element = new_end;
+      (*(thread_data_t *)thread_data).queue = cur_element;
+    }
     new_end->next = NULL;
     local_number_consumed = (*(thread_data_t *) thread_data).number_consumed;
-    if (local_number_consumed > LIMIT_CONSUME - 1) {
-      printf("should be done!\n");
+    if (num_elements == 0) {
+      // let the consumer know we have something for them.
+      //printf("about to give go ahead to consumer.\n");
+      pthread_cond_signal(&count_threshold_cv);
+      //printf("gave go ahead to consumer.\n");
+    } else {
+      usleep(1000); // TODO: needs real mathz.
     }
+    /*    if (local_number_consumed > LIMIT_CONSUME - 1) {
+      printf("should be done!\n");
+      }*/
     pthread_mutex_unlock(&count_mutex);
   }
-  printf("out of producer loop\n");
+  //printf("out of producer loop\n");
   pthread_mutex_unlock(&count_mutex);
   pthread_exit(NULL);
 }
 
 int main(int argc, char *argv[]) {
   element_t *list_head = NULL;
-  list_head = (element_t *)malloc(sizeof(element_t));
-  list_head->next = NULL;
+  //list_head = (element_t *)malloc(sizeof(element_t));
+  //list_head->next = NULL;
   int number_consumed = 0;
   thread_data_t *td = NULL;
   td = (thread_data_t *)malloc(sizeof(thread_data_t));
   td->number_consumed = 0;
-  td->queue = list_head;
+  td->queue = NULL;//list_head;
   td->arrival_rate = 3;
   td->service_rate = 4;
   int loop_idx = 0;
@@ -124,7 +150,7 @@ int main(int argc, char *argv[]) {
     pthread_mutex_unlock(&count_mutex);
     //pthread_cond_wait(&count_threshold_cv, &count_mutex);
   }
-  printf("main thread finished waiting for consumption\n");
+  //printf("main thread finished waiting for consumption\n");
   //pthread_mutex_unlock(&count_mutex);
   pthread_join(consumer_thread, NULL);
   pthread_join(producer_thread, NULL);
