@@ -10,7 +10,6 @@
 int LIMIT_CONSUME = 1000;
 int     count = 0;
 typedef struct Element {
-  int item;
   struct Element *next;
 } element_t;
 pthread_mutex_t queue_mutex;
@@ -21,6 +20,8 @@ pthread_cond_t count_threshold_cv;
 typedef struct ThreadData {
   element_t *queue;
   int number_consumed;
+  int arrival_rate;
+  int service_rate;
 } thread_data_t;
 
 
@@ -76,7 +77,6 @@ void *producer(void *thread_data) {
     }
     // at the end of the queue, now
     element_t *new_end = (element_t *)malloc(sizeof(element_t));
-    new_end->item = 42;
     cur_element->next = new_end;
     new_end->next = NULL;
     local_number_consumed = (*(thread_data_t *) thread_data).number_consumed;
@@ -99,6 +99,8 @@ int main(int argc, char *argv[]) {
   td = (thread_data_t *)malloc(sizeof(thread_data_t));
   td->number_consumed = 0;
   td->queue = list_head;
+  td->arrival_rate = 3;
+  td->service_rate = 4;
   int loop_idx = 0;
   /* For portability, explicitly create threads in a joinable state */
   pthread_attr_t attr;
