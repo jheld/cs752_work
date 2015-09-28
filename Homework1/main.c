@@ -115,10 +115,17 @@ int main(int argc, char *argv[]) {
   pthread_create(&producer_thread, &attr, producer, (void *)td);
   pthread_create(&consumer_thread, &attr, consumer, (void *)td);
   pthread_mutex_lock(&count_mutex);
-  while (td->number_consumed < LIMIT_CONSUME) {
-    pthread_cond_wait(&count_threshold_cv, &count_mutex);
-  }
+  number_consumed = td->number_consumed;
   pthread_mutex_unlock(&count_mutex);
+  while (number_consumed < LIMIT_CONSUME) {
+    usleep(10000);
+    pthread_mutex_lock(&count_mutex);
+    number_consumed = td->number_consumed;
+    pthread_mutex_unlock(&count_mutex);
+    //pthread_cond_wait(&count_threshold_cv, &count_mutex);
+  }
+  printf("main thread finished waiting for consumption\n");
+  //pthread_mutex_unlock(&count_mutex);
   pthread_join(consumer_thread, NULL);
   pthread_join(producer_thread, NULL);
     
