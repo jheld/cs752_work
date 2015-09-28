@@ -112,6 +112,15 @@ void *producer(void *thread_data) {
     pthread_mutex_unlock(&count_mutex);
   }
   //printf("out of producer loop\n");
+  pthread_mutex_lock(&count_mutex);
+  element_t *queue = (*(thread_data_t *) thread_data).queue;
+  // free the queue mem...
+  while (queue != NULL) {
+    element_t *old_head = queue;
+    queue = queue->next;
+    free(old_head);
+  }
+
   pthread_mutex_unlock(&count_mutex);
   pthread_exit(NULL);
 }
