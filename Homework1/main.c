@@ -24,59 +24,57 @@ typedef struct ThreadData {
   int number_consumed;
   int arrival_rate;
   int service_rate;
+  int consumers_that_have_finished;
+  int consumers_that_have_started;
 } thread_data_t;
 
 
 void *consumer(void *thread_data) {
-
+  double random_value;
+  int local_consumer = 0;
   pthread_mutex_lock(&count_mutex);
-  int i = (*(thread_data_t *)thread_data).number_consumed;
+  thread_data_t *td = &(*(thread_data_t *)thread_data);
+  local_consumer = td->consumers_that_have_started++;
+  int i = td->number_consumed;
   pthread_mutex_unlock(&count_mutex);
-  int should_break = 0;
+  struct timespec abstime;
+  abstime.tv_sec = 50;
   while(i < LIMIT_CONSUME) {
-    usleep(100*3);
+    //printf("consumer waiting for lock, at 0, local: %d\n", local_consumer);
     pthread_mutex_lock(&count_mutex);
-    printf("consumer top, num: %d\n",(*(thread_data_t *)thread_data).number_consumed);
-    element_t *queue = ((*(thread_data_t *)thread_data).queue);
+    i = td->number_consumed;
+    //printf("consumer top, num: %d\n", i);
+    element_t *queue = td->queue;
     if (queue != NULL) {
       element_t *old_head = queue;
-      (*(thread_data_t *)thread_data).queue = old_head->next;
+      td->queue = old_head->next;
       free(old_head);
-      (*(thread_data_t *)thread_data).number_consumed = ++i; 
+      td->number_consumed = ++i; 
+      pthread_mutex_unlock(&count_mutex);
       struct timeval tv;
       gettimeofday(&tv,NULL);
       struct drand48_data buffer;
       srand48_r(tv.tv_sec+tv.tv_usec, &buffer);
-      double random_value;
       drand48_r(&buffer, &random_value);
-      thread_data_t td = (*(thread_data_t *)thread_data);
-      random_value = -1 *(log(1.0-random_value)/td.service_rate);
+      //thread_data_t td = (*(thread_data_t *)thread_data);
+      random_value = -1 *(log(1.0-random_value)/td->service_rate);
       //printf("inter-service rate: %f\n", random_value);
-
-      usleep(random_value); // TODO: needs to be real mathz.
+      usleep((int)random_value);
+      //printf("consumer waiting for lock at 1, local: %d\n", local_consumer);
+      pthread_mutex_lock(&count_mutex);
+      //printf("consumer received for lock at 1, local: %d\n", local_consumer);
     } else {
       // let's wait for the producer to inform us there is an item waiting for us.
-      //printf("about to wait for producer.\n");
-      pthread_cond_wait(&count_threshold_cv, &count_mutex);
-      //printf("producer gave go ahead.\n");
+      //printf("consumer waiting for signal, local: %d\n", local_consumer);
+      pthread_cond_timedwait(&count_threshold_cv, &count_mutex, &abstime);
     }
-    //printf("consumer queue addy: %p\n", queue);
-    /*element_t *q_next = queue->next;
-    if (q_next != NULL) {
-      printf("consume the head...\n");
-      queue->next = ((element_t *)(element_t *)(q_next)->next);
-      free(q_next);
-      (*(thread_data_t *)thread_data).number_consumed = ++i; 
-      }*/
-    if(i >= LIMIT_CONSUME) {
-      //printf("will break.\n");
-      should_break = 1;
+    i = td->number_consumed;
+    if (i >= LIMIT_CONSUME) {
+      td->consumers_that_have_finished += 1;
     }
     pthread_mutex_unlock(&count_mutex);
-    if(should_break == 1) {
-      break;
-    }
   }
+  //printf("consumer exiting, local: %d\n", local_consumer);
   pthread_exit(NULL);
 }
 
@@ -84,9 +82,9 @@ void *producer(void *thread_data) {
   //printf("producer coming in\n");
   //sleep(1);
   pthread_mutex_lock(&count_mutex);
+  thread_data_t *td = (&(*(thread_data_t *) thread_data));
   int local_number_consumed = 0;
-  thread_data_t td = (*(thread_data_t *) thread_data);
-  local_number_consumed = (*(thread_data_t *) thread_data).number_consumed;
+  local_number_consumed = td->number_consumed;
   pthread_mutex_unlock(&count_mutex);
   while (local_number_consumed < LIMIT_CONSUME) {
     struct timeval tv;
@@ -95,11 +93,12 @@ void *producer(void *thread_data) {
     srand48_r(tv.tv_sec+tv.tv_usec, &buffer);
     double random_value;
     drand48_r(&buffer, &random_value);
-    random_value = -1 *(log(1.0-random_value)/td.arrival_rate);
+    random_value = -1 *(log(1.0-random_value)/td->arrival_rate);
     //printf("inter-arrival rate: %f\n", random_value);
     usleep((int)random_value);
     pthread_mutex_lock(&count_mutex);
-    element_t *queue = ((*(thread_data_t *)thread_data).queue);
+    local_number_consumed = td->number_consumed;
+    element_t *queue = td->queue;
     //printf("producer queue addy: %p\n", queue);
     element_t *cur_element = queue;
     int num_elements = 0;
@@ -115,24 +114,19 @@ void *producer(void *thread_data) {
       cur_element->next = new_end;
     } else {
       cur_element = new_end;
-      (*(thread_data_t *)thread_data).queue = cur_element;
+      td->queue = cur_element;
     }
     new_end->next = NULL;
-    local_number_consumed = (*(thread_data_t *) thread_data).number_consumed;
     if (num_elements == 0) {
       // let the consumer know we have something for them.
-      //printf("about to give go ahead to consumer.\n");
       pthread_cond_signal(&count_threshold_cv);
-      //printf("gave go ahead to consumer.\n");
     } else {
-      usleep(1000); // TODO: needs real mathz.
+      //usleep(1000); // TODO: needs real mathz.
     }
-    /*    if (local_number_consumed > LIMIT_CONSUME - 1) {
-      printf("should be done!\n");
-      }*/
     pthread_mutex_unlock(&count_mutex);
   }
   //printf("out of producer loop\n");
+  //printf("producer exiting, i: %d\n", local_number_consumed);
   pthread_exit(NULL);
 }
 
@@ -147,6 +141,8 @@ int main(int argc, char *argv[]) {
   td->queue = NULL;//list_head;
   td->arrival_rate = 3;
   td->service_rate = 4;
+  td->consumers_that_have_finished = 0;
+  td->consumers_that_have_started = 0;
   int loop_idx = 0;
   /* For portability, explicitly create threads in a joinable state */
   pthread_attr_t attr;
@@ -156,10 +152,14 @@ int main(int argc, char *argv[]) {
   /* Initialize mutex and condition variable objects */
   pthread_mutex_init(&count_mutex, NULL);
   pthread_cond_init(&count_threshold_cv, NULL);
-
+  int number_consumers = 5;
+  pthread_t consumer_threads[number_consumers];
+  int i = 0;
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+  for (; i < number_consumers; i++) {
+    pthread_create(&consumer_threads[i], &attr, consumer, (void *)td);
+  }
   pthread_create(&producer_thread, &attr, producer, (void *)td);
-  pthread_create(&consumer_thread, &attr, consumer, (void *)td);
   pthread_mutex_lock(&count_mutex);
   number_consumed = td->number_consumed;
   pthread_mutex_unlock(&count_mutex);
@@ -168,11 +168,12 @@ int main(int argc, char *argv[]) {
     pthread_mutex_lock(&count_mutex);
     number_consumed = td->number_consumed;
     pthread_mutex_unlock(&count_mutex);
-    //pthread_cond_wait(&count_threshold_cv, &count_mutex);
   }
-  //printf("main thread finished waiting for consumption\n");
-  //pthread_mutex_unlock(&count_mutex);
-  pthread_join(consumer_thread, NULL);
+  i = 0;
+  for (; i < number_consumers; i++) {
+    //printf("joining consumer: %d\n", i);
+    pthread_join(consumer_threads[i], NULL);
+  }
   pthread_join(producer_thread, NULL);
   element_t *queue = td->queue;
   // free the queue mem...
@@ -182,5 +183,10 @@ int main(int argc, char *argv[]) {
     free(old_head);
   }
   free(td);
+  /* Clean up and exit */
+  pthread_attr_destroy(&attr);
+  pthread_mutex_destroy(&count_mutex);
+  pthread_cond_destroy(&count_threshold_cv);
+  printf("finished joining consumers, total processed: %d\n", td->number_consumed);
   pthread_exit(NULL);
 }
