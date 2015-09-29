@@ -1,4 +1,6 @@
 #include <pthread.h>
+#include <math.h>
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -41,7 +43,17 @@ void *consumer(void *thread_data) {
       (*(thread_data_t *)thread_data).queue = old_head->next;
       free(old_head);
       (*(thread_data_t *)thread_data).number_consumed = ++i; 
-      usleep(1000); // TODO: needs to be real mathz.
+      struct timeval tv;
+      gettimeofday(&tv,NULL);
+      struct drand48_data buffer;
+      srand48_r(tv.tv_sec+tv.tv_usec, &buffer);
+      double random_value;
+      drand48_r(&buffer, &random_value);
+      thread_data_t td = (*(thread_data_t *)thread_data);
+      random_value = -1 *(log(1.0-random_value)/td.service_rate);
+      //printf("inter-service rate: %f\n", random_value);
+
+      usleep(random_value); // TODO: needs to be real mathz.
     } else {
       // let's wait for the producer to inform us there is an item waiting for us.
       //printf("about to wait for producer.\n");
@@ -73,10 +85,19 @@ void *producer(void *thread_data) {
   //sleep(1);
   pthread_mutex_lock(&count_mutex);
   int local_number_consumed = 0;
+  thread_data_t td = (*(thread_data_t *) thread_data);
   local_number_consumed = (*(thread_data_t *) thread_data).number_consumed;
   pthread_mutex_unlock(&count_mutex);
   while (local_number_consumed < LIMIT_CONSUME) {
-    usleep(100*4);
+    struct timeval tv;
+    gettimeofday(&tv,NULL);
+    struct drand48_data buffer;
+    srand48_r(tv.tv_sec+tv.tv_usec, &buffer);
+    double random_value;
+    drand48_r(&buffer, &random_value);
+    random_value = -1 *(log(1.0-random_value)/td.arrival_rate);
+    //printf("inter-arrival rate: %f\n", random_value);
+    usleep((int)random_value);
     pthread_mutex_lock(&count_mutex);
     element_t *queue = ((*(thread_data_t *)thread_data).queue);
     //printf("producer queue addy: %p\n", queue);
@@ -112,16 +133,6 @@ void *producer(void *thread_data) {
     pthread_mutex_unlock(&count_mutex);
   }
   //printf("out of producer loop\n");
-  pthread_mutex_lock(&count_mutex);
-  element_t *queue = (*(thread_data_t *) thread_data).queue;
-  // free the queue mem...
-  while (queue != NULL) {
-    element_t *old_head = queue;
-    queue = queue->next;
-    free(old_head);
-  }
-
-  pthread_mutex_unlock(&count_mutex);
   pthread_exit(NULL);
 }
 
@@ -163,6 +174,13 @@ int main(int argc, char *argv[]) {
   //pthread_mutex_unlock(&count_mutex);
   pthread_join(consumer_thread, NULL);
   pthread_join(producer_thread, NULL);
-    
+  element_t *queue = td->queue;
+  // free the queue mem...
+  while (queue != NULL) {
+    element_t *old_head = queue;
+    queue = queue->next;
+    free(old_head);
+  }
+  free(td);
   pthread_exit(NULL);
 }
