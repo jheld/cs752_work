@@ -164,9 +164,9 @@ int main(int argc, char *argv[]) {
 	      if (strcmp(argv[i-1], "-N") == 0) {
 	        number_consumers = intified < 6 && intified > 0 ? intified : number_consumers;
 	      } else if (strcmp(argv[i-1], "-L") == 0 ) {
-		td->arrival_rate = (double)intified;
+		td->arrival_rate = (double)atof(argv[i]);
 	      } else if (strcmp(argv[i-1], "-M") == 0 ) {
-		td->service_rate = (double)intified;
+		td->service_rate = (double)atof(argv[i]);
 	      } else {
 		LIMIT_CONSUME = intified;
 	      }
