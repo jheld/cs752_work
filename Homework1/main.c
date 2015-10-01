@@ -22,8 +22,8 @@ pthread_cond_t count_threshold_cv;
 typedef struct ThreadData {
   element_t *queue;
   int number_consumed;
-  int arrival_rate;
-  int service_rate;
+  double arrival_rate;
+  double service_rate;
   int consumers_that_have_finished;
   int consumers_that_have_started;
 } thread_data_t;
@@ -59,7 +59,7 @@ void *consumer(void *thread_data) {
       //thread_data_t td = (*(thread_data_t *)thread_data);
       random_value = -1 *(log(1.0-random_value)/td->service_rate);
       //printf("inter-service rate: %f\n", random_value);
-      usleep((int)random_value);
+      usleep(random_value);
       //printf("consumer waiting for lock at 1, local: %d\n", local_consumer);
       pthread_mutex_lock(&count_mutex);
       //printf("consumer received for lock at 1, local: %d\n", local_consumer);
@@ -95,7 +95,7 @@ void *producer(void *thread_data) {
     drand48_r(&buffer, &random_value);
     random_value = -1 *(log(1.0-random_value)/td->arrival_rate);
     //printf("inter-arrival rate: %f\n", random_value);
-    usleep((int)random_value);
+    usleep(random_value);
     pthread_mutex_lock(&count_mutex);
     local_number_consumed = td->number_consumed;
     element_t *queue = td->queue;
@@ -134,13 +134,49 @@ int main(int argc, char *argv[]) {
   element_t *list_head = NULL;
   //list_head = (element_t *)malloc(sizeof(element_t));
   //list_head->next = NULL;
-  int number_consumed = 0;
+  int i = 0;
+  int number_consumers = 1;
   thread_data_t *td = NULL;
   td = (thread_data_t *)malloc(sizeof(thread_data_t));
-  td->number_consumed = 0;
-  td->queue = NULL;//list_head;
   td->arrival_rate = 3;
   td->service_rate = 4;
+  for (i = 1; i < argc; i++)  /* Skip argv[0] (program name). */
+    {
+      if (strcmp(argv[i], "-N") == 0 || 
+	  strcmp(argv[i], "-L") == 0 || 
+	  strcmp(argv[i], "-M") == 0 ||
+	  strcmp(argv[i], "-C") == 0)  /* Process optional arguments. */
+        {
+	  /*
+	   * The last argument is argv[argc-1].  Make sure there are
+	   * enough arguments.
+	   */
+
+	  if (i + 1 <= argc - 1)  /* There are enough arguments in argv. */
+            {
+	      /*
+	       * Increment 'i' twice so that you don't check these
+	       * arguments the next time through the loop.
+	       */
+
+	      i++;
+	      int intified = atoi(argv[i]); /* Convert string to int */
+	      if (strcmp(argv[i-1], "-N") == 0) {
+	        number_consumers = intified < 6 && intified > 0 ? intified : number_consumers;
+	      } else if (strcmp(argv[i-1], "-L") == 0 ) {
+		td->arrival_rate = (double)intified;
+	      } else if (strcmp(argv[i-1], "-M") == 0 ) {
+		td->service_rate = (double)intified;
+	      } else {
+		LIMIT_CONSUME = intified;
+	      }
+            }
+        }
+    }
+  printf("num servers: %d, lambda: %f, mu: %f, cust: %d\n", number_consumers, td->arrival_rate, td->service_rate, LIMIT_CONSUME);
+  int number_consumed = 0;
+  td->number_consumed = 0;
+  td->queue = NULL;//list_head;
   td->consumers_that_have_finished = 0;
   td->consumers_that_have_started = 0;
   int loop_idx = 0;
@@ -152,9 +188,8 @@ int main(int argc, char *argv[]) {
   /* Initialize mutex and condition variable objects */
   pthread_mutex_init(&count_mutex, NULL);
   pthread_cond_init(&count_threshold_cv, NULL);
-  int number_consumers = 5;
   pthread_t consumer_threads[number_consumers];
-  int i = 0;
+  i = 0;
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
   for (; i < number_consumers; i++) {
     pthread_create(&consumer_threads[i], &attr, consumer, (void *)td);
