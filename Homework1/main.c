@@ -225,7 +225,7 @@ void *meta_data(void *thread_data) {
   pthread_mutex_unlock(&count_mutex);
   while (cur_consumed < LIMIT_CONSUME) {
     usleep(10000);
-    //pthread_mutex_lock(&count_mutex);
+    pthread_mutex_lock(&count_mutex);
     cur_consumed = td->number_consumed;
     cur_node = td->queue;
     queue_size = 0;
@@ -237,7 +237,7 @@ void *meta_data(void *thread_data) {
     current_mean += queue_size;
     current_mean /= 1.0 * ++number_of_collections;
     //printf("Number processed: %d\n", cur_consumed);
-    //pthread_mutex_unlock(&count_mutex);
+    pthread_mutex_unlock(&count_mutex);
   }
   td->mean_queue_length = current_mean;
   pthread_exit(NULL);
