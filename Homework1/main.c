@@ -317,6 +317,12 @@ int main(int argc, char *argv[]) {
   }
   pthread_join(producer_thread, NULL);
   pthread_join(md_thread, NULL);
+  printf("mean customer wait time: %f\n", td->mean_inter_service_wait_time/number_consumers);
+  printf("Queue mean: %f\n", td->mean_queue_length);
+  printf("mean service time: %f\n", td->mean_inter_service_time/number_consumers);
+  printf("mean inter_arrival time: %f\n", td->mean_inter_arrival_time/number_consumers);
+  printf("utilization: %f\n", td->utilization/number_consumers);
+  printf("finished joining consumers, total processed: %d\n", td->number_consumed);
   element_t *queue = td->queue;
   // free the queue mem...
   while (queue != NULL) {
@@ -329,11 +335,5 @@ int main(int argc, char *argv[]) {
   pthread_attr_destroy(&attr);
   pthread_mutex_destroy(&count_mutex);
   pthread_cond_destroy(&count_threshold_cv);
-  printf("mean customer wait time: %f\n", td->mean_inter_service_wait_time/number_consumers);
-  printf("Queue mean: %f\n", td->mean_queue_length);
-  printf("mean service time: %f\n", td->mean_inter_service_time/number_consumers);
-  printf("mean inter_arrival time: %f\n", td->mean_inter_arrival_time/number_consumers);
-  printf("utilization: %f\n", td->utilization/number_consumers);
-  printf("finished joining consumers, total processed: %d\n", td->number_consumed);
   pthread_exit(NULL);
 }
