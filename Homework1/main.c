@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
+#include <sys/time.h>
 
 #define NUM_THREADS  3
 #define TCOUNT 10
@@ -43,13 +45,12 @@ typedef struct ThreadData {
 
 void *consumer(void *thread_data) {
   double random_value;
-  int local_consumer = 0;
   double mean_customer_wait_time = 0;
-  double std_dev_service_time = 0;
+  //double std_dev_service_time = 0;
   int number_of_waits = 0;
   pthread_mutex_lock(&count_mutex);
   thread_data_t *td = &(*(thread_data_t *)thread_data);
-  local_consumer = td->consumers_that_have_started++;
+  //int local_consumer = td->consumers_that_have_started++;
   int i = td->number_consumed;
   pthread_mutex_unlock(&count_mutex);
   struct timespec abstime;
@@ -209,11 +210,11 @@ void *producer(void *thread_data) {
 void *meta_data(void *thread_data) {
   pthread_mutex_lock(&count_mutex);
   thread_data_t *td = (&(*(thread_data_t *) thread_data));
-  int use_meta_data_memory = td->meta_data_memory ? 1 : 0; // whether or not we should use the memory
-  int mean_memory[td->meta_data_memory == 0 ? 1 :td->meta_data_memory];
+  //int use_meta_data_memory = td->meta_data_memory ? 1 : 0; // whether or not we should use the memory
+  //int mean_memory[td->meta_data_memory == 0 ? 1 :td->meta_data_memory];
   double number_of_collections = 0;
   double current_mean = 0;
-  double total_deviation = 0;
+  //double total_deviation = 0;
   int cur_consumed = td->number_consumed;
   element_t *cur_node = td->queue;
   int queue_size = 0;
@@ -249,7 +250,7 @@ void *meta_data(void *thread_data) {
 }
 
 int main(int argc, char *argv[]) {
-  element_t *list_head = NULL;
+  //element_t *list_head = NULL;
   //list_head = (element_t *)malloc(sizeof(element_t));
   //list_head->next = NULL;
   int i = 0;
@@ -292,16 +293,16 @@ int main(int argc, char *argv[]) {
         }
     }
   printf("num servers: %d, lambda: %f, mu: %f, cust: %d\n", number_consumers, td->arrival_rate, td->service_rate, LIMIT_CONSUME);
-  int number_consumed = 0;
+  //int number_consumed = 0;
   td->number_consumed = 0;
   td->queue = NULL;//list_head;
   td->consumers_that_have_finished = 0;
   td->consumers_that_have_started = 0;
-  int loop_idx = 0;
+  //int loop_idx = 0;
   /* For portability, explicitly create threads in a joinable state */
   pthread_attr_t attr;
   pthread_attr_init(&attr);
-  pthread_t consumer_thread;
+  //pthread_t consumer_thread;
   pthread_t producer_thread;
   /* Initialize mutex and condition variable objects */
   pthread_mutex_init(&count_mutex, NULL);
