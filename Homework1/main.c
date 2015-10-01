@@ -11,6 +11,7 @@
 
 int LIMIT_CONSUME = 1000;
 int     count = 0;
+int number_consumers;
 typedef struct Element {
   struct Element *next;
 } element_t;
@@ -36,6 +37,7 @@ typedef struct ThreadData {
   double mean_queue_length;
   double std_dev_queue_length;
   int meta_data_memory;
+  double utilization;
 } thread_data_t;
 
 
@@ -53,17 +55,6 @@ void *consumer(void *thread_data) {
   abstime.tv_sec = 2;
   abstime.tv_nsec = 3000;
 
-  struct timeval tv;
-  gettimeofday(&tv,NULL);
-  struct drand48_data buffer;
-  srand48_r(tv.tv_sec+tv.tv_usec, &buffer);
-  drand48_r(&buffer, &random_value);
-  //thread_data_t td = (*(thread_data_t *)thread_data);
-  random_value = -1 *(log(1.0-random_value)/td->service_rate);
-  //printf("inter-service rate: %f\n", random_value);
-  struct timespec sleepTime;
-  sleepTime.tv_sec = (int)floor(random_value);
-  sleepTime.tv_nsec = (random_value-sleepTime.tv_sec) * 1000000000L;
 
   double free_time = 0;
   double total_time = 0;
@@ -85,6 +76,19 @@ void *consumer(void *thread_data) {
       pthread_mutex_unlock(&count_mutex);
       struct timeval tv1, tv2;
       gettimeofday(&tv1, NULL);
+
+      struct timeval tv;
+      gettimeofday(&tv,NULL);
+      struct drand48_data buffer;
+      srand48_r(tv.tv_sec+tv.tv_usec, &buffer);
+      drand48_r(&buffer, &random_value);
+      //thread_data_t td = (*(thread_data_t *)thread_data);
+      random_value = -1 *(log(1.0-random_value)/td->service_rate);
+      //printf("inter-service rate: %f\n", random_value);
+      struct timespec sleepTime;
+      sleepTime.tv_sec = (int)floor(random_value);
+      sleepTime.tv_nsec = (random_value-sleepTime.tv_sec) * 1000000000L;
+
 
       nanosleep(&sleepTime, NULL);
       gettimeofday(&tv2, NULL);
@@ -113,8 +117,10 @@ void *consumer(void *thread_data) {
     pthread_mutex_unlock(&count_mutex);
   }
   //printf("consumer exiting, local: %d\n", local_consumer);
-  printf("mean service time: %f\n", mean_customer_wait_time);
-  printf("utilization: %f\n", (total_time - free_time) / total_time);
+  pthread_mutex_lock(&count_mutex);
+  td->mean_inter_service_time += mean_customer_wait_time;
+  td->utilization += (total_time - free_time) / total_time;
+  pthread_mutex_unlock(&count_mutex);
   pthread_exit(NULL);
 }
 
@@ -123,7 +129,7 @@ void *producer(void *thread_data) {
   //sleep(1);
   double mean_customer_wait_time = 0;
   int number_of_waits = 0;
-
+  int number_sleeps = 0;
   pthread_mutex_lock(&count_mutex);
   thread_data_t *td = (&(*(thread_data_t *) thread_data));
   int local_number_consumed = 0;
@@ -131,18 +137,22 @@ void *producer(void *thread_data) {
   pthread_mutex_unlock(&count_mutex);
   struct timeval tv1, tv2;
 
-  struct timeval tv;
-  gettimeofday(&tv,NULL);
-  struct drand48_data buffer;
-  srand48_r(tv.tv_sec+tv.tv_usec, &buffer);
-  double random_value;
-  drand48_r(&buffer, &random_value);
-  random_value = -1 *(log(1.0-random_value)/td->arrival_rate);
-  //printf("inter-arrival rate: %f\n", random_value);
-  struct timespec sleepTime;
-  sleepTime.tv_sec = (int)floor(random_value);
-  sleepTime.tv_nsec = (random_value-sleepTime.tv_sec) * 1000000000L;
+  double wait_time = 0;
+  double inter_arrival_time = 0;
   while (local_number_consumed < LIMIT_CONSUME) {
+    struct timeval tv;
+    gettimeofday(&tv,NULL);
+    struct drand48_data buffer;
+    srand48_r(tv.tv_sec+tv.tv_usec, &buffer);
+    double random_value;
+    drand48_r(&buffer, &random_value);
+    random_value = -1 *(log(1.0-random_value)/td->arrival_rate);
+    //printf("inter-arrival rate: %f\n", random_value);
+    struct timespec sleepTime;
+    sleepTime.tv_sec = (int)floor(random_value);
+    sleepTime.tv_nsec = (random_value-sleepTime.tv_sec) * 1000000000L;
+    inter_arrival_time += (sleepTime.tv_sec + (sleepTime.tv_nsec / 1000000000.0));
+    inter_arrival_time /= ++number_sleeps;
     nanosleep(&sleepTime, NULL);
     //printf("producer sleep time: %f\n", (sleepTime.tv_sec + (sleepTime.tv_nsec / 1000000000.0)));
 
@@ -178,15 +188,18 @@ void *producer(void *thread_data) {
     }
     pthread_mutex_unlock(&count_mutex);
     gettimeofday(&tv2, NULL);
-    double wait_time = (tv2.tv_sec - tv1.tv_sec + ((tv2.tv_usec - tv1.tv_usec) / 1000000.0));
+    wait_time = (tv2.tv_sec - tv1.tv_sec + ((tv2.tv_usec - tv1.tv_usec) / 1000000.0));
     //printf("situ customer wait time: %f, rolling mean before: %f\n", wait_time, mean_customer_wait_time);
     mean_customer_wait_time += wait_time;
     mean_customer_wait_time /= 1.0 * ++number_of_waits;
 
   }
+  pthread_mutex_lock(&count_mutex);
+  td->mean_inter_service_wait_time += wait_time;
+  td->mean_inter_arrival_time = inter_arrival_time;
+  pthread_mutex_unlock(&count_mutex);
   //printf("out of producer loop\n");
   //printf("producer exiting, i: %d\n", local_number_consumed);
-  printf("mean customer wait time: %f\n", mean_customer_wait_time);
   pthread_exit(NULL);
 }
 
@@ -197,7 +210,7 @@ void *meta_data(void *thread_data) {
   int mean_memory[td->meta_data_memory == 0 ? 1 :td->meta_data_memory];
   double number_of_collections = 0;
   double current_mean = 0;
-
+  double total_deviation = 0;
   int cur_consumed = td->number_consumed;
   element_t *cur_node = td->queue;
   int queue_size = 0;
@@ -226,7 +239,7 @@ void *meta_data(void *thread_data) {
     //printf("Number processed: %d\n", cur_consumed);
     //pthread_mutex_unlock(&count_mutex);
   }
-  printf("Queue mean: %f\n", current_mean);
+  td->mean_queue_length = current_mean;
   pthread_exit(NULL);
 }
 
@@ -235,7 +248,7 @@ int main(int argc, char *argv[]) {
   //list_head = (element_t *)malloc(sizeof(element_t));
   //list_head->next = NULL;
   int i = 0;
-  int number_consumers = 1;
+  number_consumers = 1;
   thread_data_t *td = NULL;
   td = (thread_data_t *)malloc(sizeof(thread_data_t));
   td->arrival_rate = 3;
@@ -316,6 +329,11 @@ int main(int argc, char *argv[]) {
   pthread_attr_destroy(&attr);
   pthread_mutex_destroy(&count_mutex);
   pthread_cond_destroy(&count_threshold_cv);
+  printf("mean customer wait time: %f\n", td->mean_inter_service_wait_time/number_consumers);
+  printf("Queue mean: %f\n", td->mean_queue_length);
+  printf("mean service time: %f\n", td->mean_inter_service_time/number_consumers);
+  printf("mean inter_arrival time: %f\n", td->mean_inter_arrival_time/number_consumers);
+  printf("utilization: %f\n", td->utilization/number_consumers);
   printf("finished joining consumers, total processed: %d\n", td->number_consumed);
   pthread_exit(NULL);
 }
