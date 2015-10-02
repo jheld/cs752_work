@@ -214,6 +214,7 @@ void *meta_data(void *thread_data) {
   //int mean_memory[td->meta_data_memory == 0 ? 1 :td->meta_data_memory];
   double number_of_collections = 0;
   double current_mean = 0;
+  int squares_length_sum = 0;
   //double total_deviation = 0;
   int cur_consumed = td->number_consumed;
   element_t *cur_node = td->queue;
@@ -225,6 +226,7 @@ void *meta_data(void *thread_data) {
 
   current_mean += queue_size;
   number_of_collections++;
+  squares_length_sum += (queue_size * queue_size);
   
   pthread_mutex_unlock(&count_mutex);
   while (cur_consumed < LIMIT_CONSUME) {
@@ -237,15 +239,16 @@ void *meta_data(void *thread_data) {
       cur_node = cur_node->next;
       queue_size++;
     }
-    
+    squares_length_sum += (queue_size * queue_size);
     current_mean += queue_size;
     number_of_collections++;
     //current_mean /= 1.0 * ++number_of_collections;
     //printf("Number processed: %d\n", cur_consumed);
     pthread_mutex_unlock(&count_mutex);
   }
-  
+
   td->mean_queue_length = current_mean/number_of_collections;
+  td->std_dev_queue_length = sqrt((squares_length_sum/number_of_collections) - (td->mean_queue_length * td->mean_queue_length));
   pthread_exit(NULL);
 }
 
@@ -324,7 +327,8 @@ int main(int argc, char *argv[]) {
   pthread_join(producer_thread, NULL);
   pthread_join(md_thread, NULL);
   printf("mean customer wait time: %f\n", td->mean_inter_service_wait_time * number_consumers);
-  printf("Queue mean: %f\n", td->mean_queue_length);
+  printf("Queue length mean: %f\n", td->mean_queue_length);
+  printf("std deviation queue length: %f\n", td->std_dev_queue_length);
   printf("mean service time: %f\n", td->mean_inter_service_time * number_consumers);
   printf("mean inter_arrival time: %f\n", td->mean_inter_arrival_time * number_consumers);
   printf("utilization: %f\n", td->utilization * number_consumers);
