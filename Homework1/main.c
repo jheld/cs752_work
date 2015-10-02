@@ -46,6 +46,7 @@ typedef struct ThreadData {
 void *consumer(void *thread_data) {
   double random_value;
   double mean_customer_wait_time = 0;
+  int squares_service_time_sum = 0;
   //double std_dev_service_time = 0;
   int number_of_waits = 0;
   pthread_mutex_lock(&count_mutex);
@@ -96,6 +97,7 @@ void *consumer(void *thread_data) {
       gettimeofday(&tv2, NULL);
       double wait_time = tv2.tv_sec - tv1.tv_sec + (tv2.tv_usec - tv1.tv_usec) / 1000000.0;
       mean_customer_wait_time += wait_time;
+      squares_service_time_sum += pow(mean_customer_wait_time, 2);
       number_of_waits++;
 
       //printf("consumer waiting for lock at 1, local: %d\n", local_consumer);
@@ -122,6 +124,7 @@ void *consumer(void *thread_data) {
   pthread_mutex_lock(&count_mutex);
   mean_customer_wait_time /= (1.0 * number_of_waits);
   td->mean_inter_service_time += mean_customer_wait_time;
+  td->std_dev_service_time += sqrt((squares_service_time_sum/number_of_waits) - pow(td->mean_inter_service_time, 2));
   td->utilization += (total_time - free_time) / total_time;
   pthread_mutex_unlock(&count_mutex);
   pthread_exit(NULL);
@@ -139,7 +142,8 @@ void *producer(void *thread_data) {
   local_number_consumed = td->number_consumed;
   pthread_mutex_unlock(&count_mutex);
   struct timeval tv1, tv2;
-
+  int squares_inter_service_wait_sum = 0;
+  int square_inter_arrival_time_sum = 0;
   double wait_time = 0;
   double inter_arrival_time = 0;
   while (local_number_consumed < LIMIT_CONSUME) {
@@ -155,6 +159,7 @@ void *producer(void *thread_data) {
     sleepTime.tv_sec = (int)floor(random_value);
     sleepTime.tv_nsec = (random_value-sleepTime.tv_sec) * 1000000000L;
     inter_arrival_time += (sleepTime.tv_sec + (sleepTime.tv_nsec / 1000000000.0));
+    square_inter_arrival_time_sum += pow(inter_arrival_time, 2);
     number_sleeps++;
     nanosleep(&sleepTime, NULL);
     //printf("producer sleep time: %f\n", (sleepTime.tv_sec + (sleepTime.tv_nsec / 1000000000.0)));
@@ -194,6 +199,7 @@ void *producer(void *thread_data) {
     wait_time = (tv2.tv_sec - tv1.tv_sec + ((tv2.tv_usec - tv1.tv_usec) / 1000000.0));
     //printf("situ customer wait time: %f, rolling mean before: %f\n", wait_time, mean_customer_wait_time);
     mean_customer_wait_time += wait_time;
+    squares_inter_service_wait_sum += pow(mean_customer_wait_time, 2);
     number_of_waits++;
     //mean_customer_wait_time /= 1.0 * ++number_of_waits;
 
@@ -201,6 +207,8 @@ void *producer(void *thread_data) {
   pthread_mutex_lock(&count_mutex);
   td->mean_inter_service_wait_time += (mean_customer_wait_time / (1.0*number_of_waits));
   td->mean_inter_arrival_time += (inter_arrival_time/(1.0*number_sleeps));
+  td->std_dev_service_wait_time += sqrt((squares_inter_service_wait_sum/number_of_waits) - pow(td->mean_inter_service_wait_time, 2));
+  td->std_dev_arrival_time += sqrt((square_inter_arrival_time_sum/number_sleeps) - pow(td->mean_inter_arrival_time, 2));
   pthread_mutex_unlock(&count_mutex);
   //printf("out of producer loop\n");
   //printf("producer exiting, i: %d\n", local_number_consumed);
@@ -239,7 +247,7 @@ void *meta_data(void *thread_data) {
       cur_node = cur_node->next;
       queue_size++;
     }
-    squares_length_sum += (queue_size * queue_size);
+    squares_length_sum += pow(queue_size, 2);
     current_mean += queue_size;
     number_of_collections++;
     //current_mean /= 1.0 * ++number_of_collections;
@@ -248,7 +256,7 @@ void *meta_data(void *thread_data) {
   }
 
   td->mean_queue_length = current_mean/number_of_collections;
-  td->std_dev_queue_length = sqrt((squares_length_sum/number_of_collections) - (td->mean_queue_length * td->mean_queue_length));
+  td->std_dev_queue_length = sqrt((squares_length_sum/number_of_collections) - pow(td->mean_queue_length, 2));
   pthread_exit(NULL);
 }
 
@@ -326,12 +334,15 @@ int main(int argc, char *argv[]) {
   }
   pthread_join(producer_thread, NULL);
   pthread_join(md_thread, NULL);
-  printf("mean customer wait time: %f\n", td->mean_inter_service_wait_time * number_consumers);
   printf("Queue length mean: %f\n", td->mean_queue_length);
   printf("std deviation queue length: %f\n", td->std_dev_queue_length);
-  printf("mean service time: %f\n", td->mean_inter_service_time * number_consumers);
-  printf("mean inter_arrival time: %f\n", td->mean_inter_arrival_time * number_consumers);
-  printf("utilization: %f\n", td->utilization * number_consumers);
+  printf("sum of mean customer wait time: %f\n", td->mean_inter_service_wait_time);
+  printf("sum of std deviation customer wait time: %f\n", td->std_dev_service_wait_time);
+  printf("sum of mean service time: %f\n", td->mean_inter_service_time);
+  printf("sum of std deviation service time: %f\n", td->std_dev_service_time);
+  printf("sum of mean arrival time: %f\n", td->mean_inter_arrival_time);
+  printf("sum of std deviation arrival time: %f\n", td->std_dev_arrival_time);
+  printf("sum of server utilization: %f\n", td->utilization);
   printf("finished joining consumers, total processed: %d\n", td->number_consumed);
   element_t *queue = td->queue;
   // free the queue mem...
