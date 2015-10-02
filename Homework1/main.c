@@ -224,7 +224,7 @@ void *meta_data(void *thread_data) {
   }
 
   current_mean += queue_size;
-  current_mean /= ++number_of_collections;
+  number_of_collections++;
   
   pthread_mutex_unlock(&count_mutex);
   while (cur_consumed < LIMIT_CONSUME) {
