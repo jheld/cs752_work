@@ -19,8 +19,9 @@ int main(int argc, char *argv[]){
 
   cudaEventCreate(&start);
   cudaEventCreate(&stop);
-  if (argc>1)
+  if (argc>1) {
     sscanf(argv[1],"%d",&length);
+  }
   Size = sizeof(float)*length;
   a = (float *)malloc(Size);
   b = (float *)malloc(Size);
@@ -46,8 +47,8 @@ int main(int argc, char *argv[]){
 
   cudaMemcpy(gpuA, a, Size, cudaMemcpyHostToDevice);
   cudaMemcpy(gpuB, b, Size, cudaMemcpyHostToDevice);
-  dim3 numThreads(256, 1);
-  dim3 numBlocks(length/numThreads.x, 1);
+  dim3 numThreads(512, 1);
+  dim3 numBlocks(32, 1);
   cudaEventRecord(start, NULL);
   vectorSum<<<numBlocks, numThreads>>>(gpuA, gpuB, gpuC);
   cudaDeviceSynchronize();
