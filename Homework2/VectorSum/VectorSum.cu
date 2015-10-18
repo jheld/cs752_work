@@ -3,10 +3,27 @@
 #include <math.h>
 #include <time.h>
 
+__global__ void pair_wise_product(float *a, float *b, float *c) {
+  int i = threadIdx.x + blockIdx.x * blockDim.x;
+  c[i] = a[i] * b[i];
+}
+
 __global__ void vectorSum(float *a, float *b, float *c){
   int i = threadIdx.x + blockIdx.x * blockDim.x;
   c[i] = a[i] + b[i];
 }
+
+
+__global__ void reduction_num_3(float *c) {
+  int tid = threadIdx.x + blockIdx.x * blockDim.x;
+  for (unsigned int s=blockDim.x/2; s>0; s>>=1) {
+    if (tid < s) {
+      c[tid] += c[tid + s];
+    }
+    __syncthreads();
+  }
+}
+
 
 int main(int argc, char *argv[]){
   unsigned int length = 4194304;
@@ -39,30 +56,45 @@ int main(int argc, char *argv[]){
 
   cudaEventRecord(start, NULL);
   for (i=0; i<length; i++)
-    c[i] = a[i] + b[i];
+    c[i] = a[i] * b[i];
+
+  for (i = 1; i < length; i++) {
+    c[0] += c[i];
+  }
   cudaEventRecord(stop, NULL);
   cudaEventSynchronize(stop);
   cudaEventElapsedTime(&msecTotal, start, stop);
   printf("cpu time: %.3f ms\n", msecTotal);
-
   cudaMemcpy(gpuA, a, Size, cudaMemcpyHostToDevice);
   cudaMemcpy(gpuB, b, Size, cudaMemcpyHostToDevice);
   dim3 numThreads(512, 1);
   dim3 numBlocks(32, 1);
   cudaEventRecord(start, NULL);
-  vectorSum<<<numBlocks, numThreads>>>(gpuA, gpuB, gpuC);
+  pair_wise_product<<<numBlocks, numThreads>>>(gpuA, gpuB, gpuC);
   cudaDeviceSynchronize();
   cudaEventRecord(stop, NULL);
   cudaEventSynchronize(stop);
+  //cudaEventRecord(start, NULL);
   cudaMemcpy(copyC, gpuC, Size, cudaMemcpyDeviceToHost);
+  /*for (i=0; i < length; i++) {
+    printf("%f ", copyC[i]);
+  }
+  printf("\n");*/
+  cudaEventRecord(start, NULL);
+  reduction_num_3<<<numBlocks, numThreads>>>(gpuC);
+  cudaDeviceSynchronize();
+  cudaEventRecord(stop, NULL);
+  cudaEventSynchronize(stop);
 
+  cudaMemcpy(copyC, gpuC, Size, cudaMemcpyDeviceToHost);
   cudaEventElapsedTime(&msecTotal, start, stop);
   printf("gpu time: %.3f ms\n", msecTotal);
-
+  //printf("%f\n", copyC[0]);
   for (i=0; i<length; i++)
     if (fabs(c[i]-copyC[i]) > 0.000001){
       printf("%d\t%f\t%f\n", i, c[i], copyC[i]);
       return 1;
     }
+
   return 0;
 }
