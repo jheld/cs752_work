@@ -57,7 +57,6 @@ int main(int argc, char *argv[]){
   cudaEventRecord(start, NULL);
   for (i=0; i<length; i++)
     c[i] = a[i] * b[i];
-
   for (i = 1; i < length; i++) {
     c[0] += c[i];
   }
@@ -65,8 +64,9 @@ int main(int argc, char *argv[]){
   cudaEventSynchronize(stop);
   cudaEventElapsedTime(&msecTotal, start, stop);
   printf("cpu time: %.3f ms\n", msecTotal);
-  cudaMemcpy(gpuA, a, Size, cudaMemcpyHostToDevice);
-  cudaMemcpy(gpuB, b, Size, cudaMemcpyHostToDevice);
+  int padded_length = ((length + 31)/32.0) * 32;
+  cudaMemcpy(gpuA, a, sizeof(float) * padded_length, cudaMemcpyHostToDevice);
+  cudaMemcpy(gpuB, b, sizeof(float ) * padded_length, cudaMemcpyHostToDevice);
   dim3 numThreads(512, 1);
   dim3 numBlocks(32, 1);
   cudaEventRecord(start, NULL);
