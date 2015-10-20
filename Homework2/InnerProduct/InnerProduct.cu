@@ -40,19 +40,23 @@ int main(int argc, char *argv[]){
     sscanf(argv[1],"%d",&length);
   }
   Size = sizeof(float)*length;
-  a = (float *)malloc(Size);
-  b = (float *)malloc(Size);
-  c = (float *)malloc(Size);
-  copyC = (float *)malloc(Size);
+  a = (float *)calloc(length, sizeof(float));
+  b = (float *)calloc(length, sizeof(float));
+  c = (float *)calloc(length, sizeof(float));
+  copyC = (float *)calloc(length, sizeof(float));
   time(&seed);
   srand48(seed);
   for (i=0; i<length; i++)
     a[i] = drand48(), b[i] = drand48();
 
   cudaSetDevice(0);
-  cudaMalloc((void**)&gpuA, Size);
-  cudaMalloc((void**)&gpuB, Size);
-  cudaMalloc((void**)&gpuC, Size);
+  int padded_length = ((length + (512*32 - 1))/(1.0*512*32)) * (512*32);
+  cudaMalloc((void**)&gpuA, padded_length);
+  cudaMemset(&gpuA, 0, padded_length);
+  cudaMalloc((void**)&gpuB, padded_length);
+  cudaMemset(&gpuB, 0, padded_length);
+  cudaMalloc((void**)&gpuC, padded_length);
+  cudaMemset(&gpuC, 0, padded_length);
 
   cudaEventRecord(start, NULL);
   for (i=0; i<length; i++)
@@ -64,7 +68,6 @@ int main(int argc, char *argv[]){
   cudaEventSynchronize(stop);
   cudaEventElapsedTime(&msecTotal, start, stop);
   printf("cpu time: %.3f ms\n", msecTotal);
-  int padded_length = ((length + 31)/32.0) * 32;
   cudaMemcpy(gpuA, a, sizeof(float) * padded_length, cudaMemcpyHostToDevice);
   cudaMemcpy(gpuB, b, sizeof(float ) * padded_length, cudaMemcpyHostToDevice);
   dim3 numThreads(512, 1);
