@@ -33,9 +33,9 @@ int main(int argc, char** argv){
     else if (!strcmp(argv[i],"wb")) sscanf(argv[i+1],"%d", &WB);
     i += 2;
   }
-  WA = WA * BLOCK_SIZE;
-  HA = HA * BLOCK_SIZE;
-  WB = WB * BLOCK_SIZE;
+  //WA = WA * BLOCK_SIZE;
+  //HA = HA * BLOCK_SIZE;
+  //WB = WB * BLOCK_SIZE;
   HB = WA;
   WC = WB;
   HC = HA;
@@ -72,18 +72,31 @@ int main(int argc, char** argv){
   printf("cpu time: %.3f ms\n", msecTotal);
 
   float* d_A, *d_B, *d_C;
-  cudaMalloc((void**) &d_A, mem_size_A);
-  cudaMalloc((void**) &d_B, mem_size_B);
-  cudaMalloc((void**) &d_C, mem_size_C);
+  size_t pitch_a, pitch_b, pitch_c;
+  cudaMallocPitch((void**) &d_A, &pitch_a, WA, HA);
+  cudaMallocPitch((void**) &d_B, &pitch_b, WB, HB);
+  cudaMallocPitch((void**) &d_C, &pitch_c, WC, HC);
+
+  int normalized_wa = (((WA + BLOCK_SIZE - 1)/(BLOCK_SIZE*1.0)) * BLOCK_SIZE);
+  int normalized_ha = (((HA + BLOCK_SIZE - 1)/(BLOCK_SIZE*1.0)) * BLOCK_SIZE);
+  int normalized_wb = (((WB + BLOCK_SIZE - 1)/(BLOCK_SIZE*1.0)) * BLOCK_SIZE);
+  int normalized_hb = (((HB + BLOCK_SIZE - 1)/(BLOCK_SIZE*1.0)) * BLOCK_SIZE);
+  int normalized_wc = (((WC + BLOCK_SIZE - 1)/(BLOCK_SIZE*1.0)) * BLOCK_SIZE);
+  int normalized_hc = (((HC + BLOCK_SIZE - 1)/(BLOCK_SIZE*1.0)) * BLOCK_SIZE);
+
 
   cudaEventRecord(start, NULL);
-  cudaMemcpy(d_A, h_A, mem_size_A, cudaMemcpyHostToDevice);
-  cudaMemcpy(d_B, h_B, mem_size_B, cudaMemcpyHostToDevice);
+
+  cudaMemcpy2D(d_A, normalized_wa*sizeof(int), h_A, pitch_a, normalized_wa*sizeof(int), normalized_ha, cudaMemcpyHostToDevice);
+  cudaMemset2D(&d_A, normalized_wa*sizeof(int), 0, normalized_wa, normalized_ha);
+  cudaMemcpy2D(d_B, normalized_wb*sizeof(int), h_B, pitch_b, normalized_wb*sizeof(int), normalized_hb, cudaMemcpyHostToDevice);
+  cudaMemset2D(&d_B, WB*sizeof(int), 0, normalized_wb, normalized_hb);
   dim3 threads(BLOCK_SIZE, BLOCK_SIZE);
   dim3 grid(WC/threads.x, HC/threads.y);
   matrixMul<<<grid, threads>>>(d_C, d_A, d_B, WA, WB);
   cudaDeviceSynchronize();
-  cudaMemcpy(h_C, d_C, mem_size_C, cudaMemcpyDeviceToHost);
+  cudaMemcpy2D(d_C, normalized_wc*sizeof(int), h_C, pitch_c, normalized_wc*sizeof(int), normalized_hc, cudaMemcpyDeviceToHost);
+  cudaMemset2D(&d_C, normalized_wc*sizeof(int), 0, normalized_wc, normalized_hc);
   cudaEventRecord(stop, NULL);
   cudaEventSynchronize(stop);
   cudaEventElapsedTime(&msecTotal, start, stop);
