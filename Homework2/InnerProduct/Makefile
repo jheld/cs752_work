@@ -10,5 +10,5 @@ CCFLAGS   := -m64
 NVCCFLAGS := -m64
 INCLUDES  := -I$(CUDA_INC_PATH) -I. -I$(CUDA_PATH)/samples/common/inc
 
-VectorSum: VectorSum.cu
+InnerProduct: InnerProduct.cu
 	$(NVCC) $(NVCCFLAGS) $(INCLUDES) $(LDFLAGS) -O3 -o $@ $<
