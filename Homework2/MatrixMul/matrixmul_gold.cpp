@@ -18,6 +18,7 @@
 //! @param hA         height of matrix A
 //! @param wB         width of matrix B
 ///////////////////////////////////////////////////////////////////////////////
+#include <stdio.h>
 void computeGold(float* C, const float* A, const float* B,
 		 unsigned int hA, unsigned int wA, unsigned int wB){
   for (unsigned int i = 0; i < hA; ++i)
@@ -26,8 +27,10 @@ void computeGold(float* C, const float* A, const float* B,
       for (unsigned int k = 0; k < wA; ++k){
 	double a = A[i * wA + k];
 	double b = B[k * wB + j];
+	//printf("a: %f, b: %f\n", (float)a, (float)b);
 	sum += a * b;
       }
+      //printf("\n");
       C[i * wB + j] = (float)sum;
     }
 }
